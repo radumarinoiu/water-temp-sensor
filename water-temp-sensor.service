@@ -1,0 +1,15 @@
+[Unit]
+Description=Water Temperature Sensor Service
+After=multi-user.target
+Wants=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/water-temp-sensor
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

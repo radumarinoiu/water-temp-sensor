@@ -1,0 +1,83 @@
+#!/usr/bin/python3
+import os
+import sys
+
+import serial
+
+
+def load_config(config_path="/etc/water-temp-sensor.conf"):
+    """Load configuration from file."""
+    config = {}
+    try:
+        with open(config_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        config[key.strip()] = value.strip()
+    except FileNotFoundError:
+        print(f"Config file {config_path} not found", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error reading config file: {e}", file=sys.stderr)
+        sys.exit(1)
+    
+    return config
+
+
+class TempSensor:
+    def __init__(self, device_path):
+        self._port = device_path
+        self._baud_rate = 9600
+        self._serial_conn = self._new_connection(self._port, self._baud_rate)
+
+    def _new_connection(self, port, baudrate):
+        return serial.Serial(port, baudrate)  # Add timeout for read
+
+    @property
+    def serial_connection(self):
+        try:
+            self._serial_conn.in_waiting
+        except Exception as ex:
+            print(f"Serial connection error: {ex} - {type(ex)}", file=sys.stderr)
+            self._serial_conn = self._new_connection(self._port, self._baud_rate)
+        return self._serial_conn
+
+    def read(self):
+        return self.serial_connection.readline()
+
+    def read_float(self):
+        value = self.read().decode().strip()
+        try:
+            return float(value)
+        except ValueError:
+            print(f"Value {value} is not float", file=sys.stderr)
+
+
+if __name__ == '__main__':
+    config = load_config()
+    
+    serial_dev = config.get('SERIAL_DEV')
+    sensor_output_location = config.get('SENSOR_OUTPUT_PATH')
+    
+    if not serial_dev:
+        print("SERIAL_DEV not found in config file, exiting", file=sys.stderr)
+        sys.exit(1)
+    if not sensor_output_location:
+        print("SENSOR_OUTPUT_PATH not found in config file, defaulting to /tmp/water_temp", file=sys.stdout)
+        sensor_output_location = "/tmp/water_temp"
+    
+    while True:
+        try:
+            temp_sensor = TempSensor(serial_dev)
+            while True:
+                temperature = temp_sensor.read_float()
+                if temperature is None:
+                    continue
+                with open(sensor_output_location, "w") as fd:
+                    fd.write(str(int(temperature*1000)))
+        except KeyboardInterrupt:
+            with open(sensor_output_location, "w") as fd:
+                fd.write(str(int(60*1000)))
+            sys.exit(0)
